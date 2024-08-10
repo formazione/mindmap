@@ -1,0 +1,269 @@
+# app.py remains the same
+
+# templates/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Mind Map</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #mind-map {
+            position: relative;
+            min-height: 600px;
+            min-width: 800px;
+            border: 1px solid #ddd;
+            overflow: auto;
+        }
+        .node {
+            position: absolute;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            cursor: move;
+            user-select: none;
+        }
+        #connection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .connection-point {
+            width: 10px;
+            height: 10px;
+            background-color: #007bff;
+            border-radius: 50%;
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-5">
+        <h1 class="text-center mb-5">Interactive Mind Map</h1>
+        <div class="row justify-content-center">
+            <div class="col-md-12">
+                <div id="mind-map">
+                    <canvas id="connection-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12 text-center">
+                <button id="add-connection" class="btn btn-primary">Add Connection</button>
+                <button id="save-mind-map" class="btn btn-success">Save Mind Map</button>
+                <button id="load-mind-map" class="btn btn-info">Load Mind Map</button>
+                <input type="file" id="file-input" style="display: none;" accept=".json">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mindMap = document.getElementById('mind-map');
+        const canvas = document.getElementById('connection-canvas');
+        const ctx = canvas.getContext('2d');
+        let nodes = [];
+        let connections = [];
+        let connectingNode = null;
+
+        function initializeMindMap(data) {
+            nodes = data.nodes;
+            connections = data.connections;
+            renderNodes();
+            drawConnections();
+            adjustMindMapSize();
+        }
+
+        function renderNodes() {
+            mindMap.querySelectorAll('.node').forEach(node => node.remove());
+            nodes.forEach(node => {
+                const nodeElement = document.createElement('div');
+                nodeElement.className = 'node';
+                nodeElement.id = node.id;
+                nodeElement.innerHTML = `
+                    <h4 contenteditable="true">${node.title}</h4>
+                    <p contenteditable="true">${node.subtitle}</p>
+                    <div class="connection-point"></div>
+                `;
+                nodeElement.style.left = `${node.x}%`;
+                nodeElement.style.top = `${node.y}px`;
+                mindMap.appendChild(nodeElement);
+                makeNodeDraggable(nodeElement);
+                addConnectionPointListener(nodeElement);
+            });
+        }
+
+        function makeNodeDraggable(node) {
+            let isDragging = false;
+            let offsetX, offsetY;
+
+            node.addEventListener('mousedown', function(e) {
+                if (e.target.classList.contains('connection-point')) return;
+                isDragging = true;
+                offsetX = e.clientX - node.offsetLeft;
+                offsetY = e.clientY - node.offsetTop;
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (isDragging) {
+                    const x = e.clientX - offsetX;
+                    const y = e.clientY - offsetY;
+                    node.style.left = x + 'px';
+                    node.style.top = y + 'px';
+                    updateNodePosition(node.id, x, y);
+                    drawConnections();
+                    adjustMindMapSize();
+                }
+            });
+
+            document.addEventListener('mouseup', function() {
+                isDragging = false;
+            });
+        }
+
+        function addConnectionPointListener(node) {
+            const connectionPoint = node.querySelector('.connection-point');
+            connectionPoint.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (connectingNode === null) {
+                    connectingNode = node.id;
+                    connectionPoint.style.backgroundColor = 'red';
+                } else if (connectingNode !== node.id) {
+                    connections.push({source: connectingNode, target: node.id});
+                    drawConnections();
+                    resetConnectionPoint();
+                }
+            });
+        }
+
+        function resetConnectionPoint() {
+            connectingNode = null;
+            document.querySelectorAll('.connection-point').forEach(point => {
+                point.style.backgroundColor = '#007bff';
+            });
+        }
+
+        function updateNodePosition(id, x, y) {
+            const node = nodes.find(n => n.id === id);
+            if (node) {
+                node.x = (x / mindMap.offsetWidth) * 100;
+                node.y = y;
+            }
+        }
+
+        function drawConnections() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            connections.forEach(conn => {
+                const sourceNode = document.getElementById(conn.source);
+                const targetNode = document.getElementById(conn.target);
+                if (sourceNode && targetNode) {
+                    ctx.beginPath();
+                    ctx.moveTo(sourceNode.offsetLeft + sourceNode.offsetWidth / 2, sourceNode.offsetTop + sourceNode.offsetHeight);
+                    ctx.lineTo(targetNode.offsetLeft + targetNode.offsetWidth / 2, targetNode.offsetTop + targetNode.offsetHeight);
+                    ctx.strokeStyle = '#007bff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function adjustMindMapSize() {
+            let maxX = 0;
+            let maxY = 0;
+            nodes.forEach(node => {
+                const nodeElement = document.getElementById(node.id);
+                if (nodeElement) {
+                    const right = nodeElement.offsetLeft + nodeElement.offsetWidth;
+                    const bottom = nodeElement.offsetTop + nodeElement.offsetHeight;
+                    maxX = Math.max(maxX, right);
+                    maxY = Math.max(maxY, bottom);
+                }
+            });
+            mindMap.style.width = `${Math.max(800, maxX + 50)}px`;
+            mindMap.style.height = `${Math.max(600, maxY + 50)}px`;
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            canvas.width = mindMap.scrollWidth;
+            canvas.height = mindMap.scrollHeight;
+            drawConnections();
+        }
+
+        mindMap.addEventListener('dblclick', function(e) {
+            if (e.target === mindMap) {
+                const x = (e.offsetX / mindMap.offsetWidth) * 100;
+                const y = e.offsetY;
+                const id = 'node-' + Date.now();
+                nodes.push({id: id, title: 'New Node', subtitle: 'Click to edit', x: x, y: y});
+                renderNodes();
+                drawConnections();
+                adjustMindMapSize();
+            }
+        });
+
+        document.getElementById('add-connection').addEventListener('click', function() {
+            const source = prompt("Enter the ID of the source node:");
+            const target = prompt("Enter the ID of the target node:");
+            if (source && target) {
+                connections.push({source, target});
+                drawConnections();
+            }
+        });
+
+        document.getElementById('save-mind-map').addEventListener('click', function() {
+            const data = {nodes, connections};
+            fetch('/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Mind map saved successfully!');
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "mind_map.json");
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Failed to save mind map');
+            });
+        });
+
+        document.getElementById('load-mind-map').addEventListener('click', function() {
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = JSON.parse(e.target.result);
+                    initializeMindMap(data);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Initialize with data from server
+        initializeMindMap({{ mind_map_data|safe }});
+    </script>
+</body>
+</html>
